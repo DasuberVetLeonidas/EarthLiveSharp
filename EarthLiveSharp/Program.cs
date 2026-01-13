@@ -93,6 +93,90 @@ namespace EarthLiveSharp
         void ResetState();
     }
     public class Scraper_himawari8 : IScraper
+
+    // // New URL from JMA
+    // {
+    //     // JMA URL Pattern: https://www.data.jma.go.jp/mscweb/data/himawari/img/aus/aus_tre_HHmm.jpg
+    //     private const string JMA_BASE_URL = "https://www.data.jma.go.jp/mscweb/data/himawari/img/aus/aus_tre_";
+
+    //     public void UpdateImage()
+    //     {
+    //         InitFolder();
+
+    //         try
+    //         {
+    //             // 1. Get current UTC time
+    //             DateTime nowUtc = DateTime.UtcNow;
+
+    //             // 2. Subtract 10 minutes to avoid fetching an image that hasn't been uploaded yet.
+    //             //    (This also handles the "going back one day" logic automatically via DateTime math)
+    //             DateTime adjustedTime = nowUtc.AddMinutes(-10);
+
+    //             // 3. Round down to the nearest 10-minute interval
+    //             //    Example: 00:19 -> 00:10,  00:05 -> 00:00
+    //             int minute = adjustedTime.Minute;
+    //             int roundedMinute = (minute / 10) * 10;
+
+    //             // 4. Construct the target timestamp
+    //             DateTime targetTime = new DateTime(
+    //                 adjustedTime.Year, 
+    //                 adjustedTime.Month, 
+    //                 adjustedTime.Day, 
+    //                 adjustedTime.Hour, 
+    //                 roundedMinute, 
+    //                 0, 
+    //                 DateTimeKind.Utc
+    //             );
+
+    //             // 5. Generate the URL (Format: HHmm, e.g., "2350", "0010")
+    //             string timeStr = targetTime.ToString("HHmm");
+    //             string imageUrl = JMA_BASE_URL + timeStr + ".jpg";
+    //             string savePath = Cfg.image_folder + "\\wallpaper.bmp";
+
+    //             // 6. Download
+    //             // Clean up old file first
+    //             if (File.Exists(savePath))
+    //             {
+    //                 File.Delete(savePath);
+    //             }
+
+    //             using (WebClient client = new WebClient())
+    //             {
+    //                 // Tls12 is required for most government websites now
+    //                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
+    //                 Trace.WriteLine("[JMA Download] Requesting: " + imageUrl);
+    //                 client.DownloadFile(imageUrl, savePath);
+    //                 Trace.WriteLine("[JMA Download] Success. Saved to " + savePath);
+    //             }
+    //         }
+    //         catch (Exception e)
+    //         {
+    //             Trace.WriteLine("[JMA Download Error] " + e.Message);
+    //         }
+    //     }
+
+    //     private void InitFolder()
+    //     {
+    //         if (!Directory.Exists(Cfg.image_folder))
+    //         {
+    //             Directory.CreateDirectory(Cfg.image_folder);
+    //         }
+    //     }
+
+    //     // --- Interface Stubs (Not needed for direct JMA download) ---
+    //     public void CleanCDN()
+    //     {
+    //         // Logic removed as we are not using Cloudinary/CDN for this source
+    //     }
+
+    //     public void ResetState()
+    //     {
+    //         // No state tracking needed for direct time-based download
+    //     }
+    // }
+
+    // Old url from NICT
     {
         private string imageID = "";
         private static string last_imageID = "0";
@@ -168,64 +252,148 @@ namespace EarthLiveSharp
             }
         }
 
+        // Original FullDisk JoinImage
+        // private void JoinImage()
+        // {
+        //     // join & convert the images to wallpaper.bmp
+        //     Bitmap bitmap = new Bitmap(550 * Cfg.size, 550 * Cfg.size);
+        //     Image[,] tile = new Image[Cfg.size, Cfg.size];
+        //     Graphics g = Graphics.FromImage(bitmap);
+        //     for (int ii = 0; ii < Cfg.size; ii++)
+        //     {
+        //         for (int jj = 0; jj < Cfg.size; jj++)
+        //         {
+        //             tile[ii,jj] = Image.FromFile(string.Format("{0}\\{1}_{2}.png", Cfg.image_folder, ii, jj));
+        //             g.DrawImage(tile[ii, jj], 550 * ii, 550 * jj);
+        //             tile[ii, jj].Dispose();
+        //         }
+        //     }
+        //     g.Save();
+        //     g.Dispose();
+        //     if (Cfg.zoom == 100)
+        //     {
+        //         bitmap.Save(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder),System.Drawing.Imaging.ImageFormat.Bmp);
+        //     }
+        //     else if (1 < Cfg.zoom & Cfg.zoom <100)
+        //     {
+        //         int new_size = bitmap.Height * Cfg.zoom /100;
+        //         Bitmap zoom_bitmap = new Bitmap(new_size, new_size);
+        //         Graphics g_2 = Graphics.FromImage(zoom_bitmap);
+        //         g_2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        //         g_2.DrawImage(bitmap, 0, 0, new_size, new_size);
+        //         g_2.Save();
+        //         g_2.Dispose();
+        //         zoom_bitmap.Save(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder),System.Drawing.Imaging.ImageFormat.Bmp);
+        //         zoom_bitmap.Dispose();
+        //     }
+        //     else
+        //     {
+        //         Trace.WriteLine("[himawari8 zoom error]");
+        //     }
+
+        //     bitmap.Dispose();
+
+        //     if (Cfg.saveTexture && Cfg.saveDirectory != "selected Directory")
+        //     {
+        //         if (Scrap_wrapper.SequenceCount >= Cfg.saveMaxCount)
+        //         {
+        //             Scrap_wrapper.SequenceCount = 0;
+        //         }
+        //         try
+        //         {
+        //             File.Copy(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder), Cfg.saveDirectory + "\\" + "wallpaper_" + Scrap_wrapper.SequenceCount + ".bmp", true);
+        //             Scrap_wrapper.SequenceCount++;
+        //         }
+        //         catch (Exception e)
+        //         {
+        //             Trace.WriteLine("[can't save wallpaper to distDirectory]");
+        //             Trace.WriteLine(e.Message);
+        //             return;
+        //         }
+        //     }
+        // }
+
+        // New Australia focused JoinImage
         private void JoinImage()
         {
-            // join & convert the images to wallpaper.bmp
-            Bitmap bitmap = new Bitmap(550 * Cfg.size, 550 * Cfg.size);
-            Image[,] tile = new Image[Cfg.size, Cfg.size];
-            Graphics g = Graphics.FromImage(bitmap);
-            for (int ii = 0; ii < Cfg.size; ii++)
-            {
-                for (int jj = 0; jj < Cfg.size; jj++)
-                {
-                    tile[ii,jj] = Image.FromFile(string.Format("{0}\\{1}_{2}.png", Cfg.image_folder, ii, jj));
-                    g.DrawImage(tile[ii, jj], 550 * ii, 550 * jj);
-                    tile[ii, jj].Dispose();
-                }
-            }
-            g.Save();
-            g.Dispose();
-            if (Cfg.zoom == 100)
-            {
-                bitmap.Save(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder),System.Drawing.Imaging.ImageFormat.Bmp);
-            }
-            else if (1 < Cfg.zoom & Cfg.zoom <100)
-            {
-                int new_size = bitmap.Height * Cfg.zoom /100;
-                Bitmap zoom_bitmap = new Bitmap(new_size, new_size);
-                Graphics g_2 = Graphics.FromImage(zoom_bitmap);
-                g_2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g_2.DrawImage(bitmap, 0, 0, new_size, new_size);
-                g_2.Save();
-                g_2.Dispose();
-                zoom_bitmap.Save(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder),System.Drawing.Imaging.ImageFormat.Bmp);
-                zoom_bitmap.Dispose();
-            }
-            else
-            {
-                Trace.WriteLine("[himawari8 zoom error]");
-            }
+            // 1. Setup dimensions for the Full Disk
+            int fullWidth = 550 * Cfg.size;
+            int fullHeight = 550 * Cfg.size;
 
-            bitmap.Dispose();
-
-            if (Cfg.saveTexture && Cfg.saveDirectory != "selected Directory")
+            // 2. Create the full disk in memory first
+            using (Bitmap fullDisk = new Bitmap(fullWidth, fullHeight))
             {
-                if (Scrap_wrapper.SequenceCount >= Cfg.saveMaxCount)
+                using (Graphics g = Graphics.FromImage(fullDisk))
                 {
-                    Scrap_wrapper.SequenceCount = 0;
+                    // Draw all downloaded tiles onto the full disk canvas
+                    for (int ii = 0; ii < Cfg.size; ii++)
+                    {
+                        for (int jj = 0; jj < Cfg.size; jj++)
+                        {
+                            string tilePath = string.Format("{0}\\{1}_{2}.png", Cfg.image_folder, ii, jj);
+                            if (File.Exists(tilePath))
+                            {
+                                using (Image tile = Image.FromFile(tilePath))
+                                {
+                                    g.DrawImage(tile, 550 * ii, 550 * jj);
+                                }
+                            }
+                        }
+                    }
                 }
-                try
+
+                // 3. DEFINE CROP: Focus on Australia / Bass Strait / East Coast
+                // Himawari-8 Center is 140.7E (approx. mid-Australia longitude).
+                // 
+                // Settings below are percentages (0.0 to 1.0) of the full image.
+                // Adjust these numbers to zoom in tighter or pan around.
+                
+                // X=0.25: Starts a bit West of WA.
+                // Y=0.55: Starts around Northern Territory (south of Equator).
+                // W=0.45: Wide enough to include NZ.
+                // H=0.35: Tall enough to include Tasmania/Bass Strait and Southern Ocean.
+
+                int cropX = (int)(fullWidth * 0.25);
+                int cropY = (int)(fullHeight * 0.55);
+                int cropW = (int)(fullWidth * 0.45);
+                int cropH = (int)(fullHeight * 0.35);
+
+                // Safety check to prevent crashing if bounds are wrong
+                if (cropX + cropW > fullWidth) cropW = fullWidth - cropX;
+                if (cropY + cropH > fullHeight) cropH = fullHeight - cropY;
+
+                Rectangle cropRect = new Rectangle(cropX, cropY, cropW, cropH);
+
+                // 4. Crop the image and Save as wallpaper.bmp
+                // We use Clone to extract the specific rectangle
+                using (Bitmap croppedBitmap = fullDisk.Clone(cropRect, fullDisk.PixelFormat))
                 {
-                    File.Copy(string.Format("{0}\\wallpaper.bmp", Cfg.image_folder), Cfg.saveDirectory + "\\" + "wallpaper_" + Scrap_wrapper.SequenceCount + ".bmp", true);
-                    Scrap_wrapper.SequenceCount++;
-                }
-                catch (Exception e)
-                {
-                    Trace.WriteLine("[can't save wallpaper to distDirectory]");
-                    Trace.WriteLine(e.Message);
-                    return;
+                    // Save the Main Wallpaper
+                    string wallpaperPath = string.Format("{0}\\wallpaper.bmp", Cfg.image_folder);
+                    croppedBitmap.Save(wallpaperPath, System.Drawing.Imaging.ImageFormat.Bmp);
+
+                    // 5. Save to Archive Directory (if enabled in settings)
+                    if (Cfg.saveTexture && Cfg.saveDirectory != "selected Directory")
+                    {
+                        if (Scrap_wrapper.SequenceCount >= Cfg.saveMaxCount)
+                        {
+                            Scrap_wrapper.SequenceCount = 0;
+                        }
+                        try
+                        {
+                            string archivePath = Cfg.saveDirectory + "\\" + "wallpaper_" + Scrap_wrapper.SequenceCount + ".bmp";
+                            croppedBitmap.Save(archivePath, System.Drawing.Imaging.ImageFormat.Bmp);
+                            Scrap_wrapper.SequenceCount++;
+                        }
+                        catch (Exception e)
+                        {
+                            Trace.WriteLine("[can't save wallpaper to distDirectory]");
+                            Trace.WriteLine(e.Message);
+                        }
+                    }
                 }
             }
+            // 'using' blocks automatically dispose of fullDisk to free memory
         }
 
         private void InitFolder()
