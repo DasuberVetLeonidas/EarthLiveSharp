@@ -1,14 +1,30 @@
 ﻿using System;
 using System.Windows.Forms;
 using System.Net;
-using System.Net.Cache;  
+using System.Net.Cache;   
 using System.IO;
 using System.Diagnostics;
 using Microsoft.Win32;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Collections.Generic;
 
 namespace EarthLiveSharp
 {
+    // Helper struct for City Data
+    public struct City
+    {
+        public string Name;
+        public double Lat;
+        public double Lon;
+        public City(string name, double lat, double lon)
+        {
+            Name = name;
+            Lat = lat;
+            Lon = lon;
+        }
+    }
+
     static class Program
     {
         [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -36,7 +52,7 @@ namespace EarthLiveSharp
             {
                 return;
             }
-            if (Cfg.source_selection ==0 & Cfg.cloud_name.Equals("demo"))
+            if (Cfg.source_selection == 0 & Cfg.cloud_name.Equals("demo"))
             {
                 #if DEBUG
 
@@ -48,10 +64,7 @@ namespace EarthLiveSharp
                 }
                 #endif
             }
-            //if (Cfg.language.Equals("en")| Cfg.language.Equals("zh-Hans")| Cfg.language.Equals("zh-Hant"))
-            //{
-            //    System.Threading.Thread.CurrentThread.CurrentUICulture = new System.Globalization.CultureInfo(Cfg.language);
-            //}
+ 
             Cfg.image_folder = Application.StartupPath + @"\images";
             Cfg.Save();
             Scrap_wrapper.set_scraper();
@@ -92,11 +105,23 @@ namespace EarthLiveSharp
         void CleanCDN();
         void ResetState();
     }
-    public class Scraper_himawari8 : IScraper
+
+public class Scraper_himawari8 : IScraper
     {
         private string imageID = "";
         private static string last_imageID = "0";
         private string json_url = "https://himawari8-dl.nict.go.jp/himawari8/img/FULL_24h/latest.json";
+
+        // Cities List
+        private List<City> cities = new List<City>()
+        {
+            new City("Shanghai", 31.23, 121.47),
+            new City("Sydney", -33.86, 151.21),
+            new City("Adelaide", -34.93, 138.60),
+            new City("Perth", -31.95, 115.86),
+            new City("Brisbane", -27.47, 153.03),
+            new City("Melbourne", -37.81, 144.96)
+        };
 
         private int GetImageID()
         {
@@ -149,7 +174,7 @@ namespace EarthLiveSharp
                     for (int jj = 0; jj < Cfg.size; jj++)
                     {
                         url = string.Format("{0}/{1}d/550/{2}_{3}_{4}.png", image_source, Cfg.size, imageID, ii, jj);
-                        image_path = string.Format("{0}\\{1}_{2}.png", Cfg.image_folder, ii, jj); // remove the '/' in imageID
+                        image_path = string.Format("{0}\\{1}_{2}.png", Cfg.image_folder, ii, jj); 
                         client.DownloadFile(url, image_path);
                     }
                 }
@@ -168,19 +193,105 @@ namespace EarthLiveSharp
             }
         }
 
-        // New Australia focused JoinImage
+        // --- FIXED PROJECTION GEOMETRY ---
+        private Point GetPixelCoordinates(double lat, double lon, int width, int height)
+        {
+            // Himawari-8/9 Sub-satellite Point
+            double satLon = 140.7; 
+            
+            double radLat = lat * Math.PI / 180.0;
+            double radLon = lon * Math.PI / 180.0;
+            double radSatLon = satLon * Math.PI / 180.0;
+            double radLonDiff = radLon - radSatLon;
+
+            // Perspective constants
+            // P = distance_satellite / radius_earth = 42164 / 6378
+            double P = 6.610689; 
+            
+            // Geocentric coords
+            double x_g = Math.Cos(radLat) * Math.Cos(radLonDiff);
+            double y_g = Math.Cos(radLat) * Math.Sin(radLonDiff);
+            double z_g = Math.Sin(radLat);
+
+            // Visibility check (hide if on the back side)
+            if (x_g < 0.155) // approximate limb limit
+            {
+                return new Point(-100, -100);
+            }
+
+            // Vertical Perspective Projection (View from P looking at 0)
+            // The mapping factor K maps the geometric projection to the normalized plane
+            double K = (P - 1) / (P - x_g);
+            
+            double x_proj = K * y_g; 
+            double y_proj = K * z_g;
+
+            // CALIBRATION FIX:
+            // At the limb (edge of earth), x_proj is approx 0.858.
+            // We want the limb to be at the edge of the image (0.5 coordinates).
+            // Scale = 0.5 / 0.858 = ~0.582
+            double scale = 0.582; 
+
+            int pixelX = (int)((0.5 + x_proj * scale) * width);
+            int pixelY = (int)((0.5 - y_proj * scale) * height);
+
+            return new Point(pixelX, pixelY);
+        }
+
+        private void DrawCityMarkers(Bitmap bmp)
+        {
+            // Dynamic Sizing
+            int refSize = bmp.Width; 
+            int fontSize = Math.Max(14, refSize / 65); 
+            int dotSize = Math.Max(8, refSize / 180); 
+            int padding = dotSize / 2;
+
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+                using (Brush brushRed = new SolidBrush(Color.Red))
+                using (Pen penWhite = new Pen(Color.White, 2))
+                using (Font font = new Font("Arial", fontSize, FontStyle.Bold))
+                using (GraphicsPath path = new GraphicsPath())
+                {
+                    foreach (var city in cities)
+                    {
+                        Point p = GetPixelCoordinates(city.Lat, city.Lon, bmp.Width, bmp.Height);
+
+                        // Skip if off-screen (e.g. hidden side)
+                        if (p.X < 0 || p.Y < 0) continue;
+
+                        // Draw Dot
+                        Rectangle dotRect = new Rectangle(p.X - padding, p.Y - padding, dotSize, dotSize);
+                        g.FillEllipse(brushRed, dotRect);
+                        g.DrawEllipse(penWhite, dotRect);
+
+                        // Draw Text with Outline
+                        string text = city.Name;
+                        PointF textPos = new PointF(p.X + dotSize, p.Y - (fontSize / 2));
+
+                        path.Reset();
+                        path.AddString(text, font.FontFamily, (int)font.Style, font.Size, textPos, StringFormat.GenericDefault);
+                        
+                        g.DrawPath(new Pen(Color.Black, 3), path);
+                        g.FillPath(Brushes.White, path);
+                    }
+                }
+            }
+        }
+
         private void JoinImage()
         {
-            // 1. Setup dimensions for the Full Disk
             int fullWidth = 550 * Cfg.size;
             int fullHeight = 550 * Cfg.size;
 
-            // 2. Create the full disk in memory first
             using (Bitmap fullDisk = new Bitmap(fullWidth, fullHeight))
             {
+                // 1. Reconstruct Full Disk
                 using (Graphics g = Graphics.FromImage(fullDisk))
                 {
-                    // Draw all downloaded tiles onto the full disk canvas
                     for (int ii = 0; ii < Cfg.size; ii++)
                     {
                         for (int jj = 0; jj < Cfg.size; jj++)
@@ -197,37 +308,60 @@ namespace EarthLiveSharp
                     }
                 }
 
-                // 3. DEFINE CROP: Focus on Australia / Bass Strait / East Coast
-                // Himawari-8 Center is 140.7E (approx. mid-Australia longitude).
-                // 
-                // Settings below are percentages (0.0 to 1.0) of the full image.
-                // Adjust these numbers to zoom in tighter or pan around.
-                
-                // X=0.25: Starts a bit West of WA.
-                // Y=0.55: Starts around Northern Territory (south of Equator).
-                // W=0.45: Wide enough to include NZ.
-                // H=0.35: Tall enough to include Tasmania/Bass Strait and Southern Ocean.
+                // 2. MARK CITIES on the Full Disk
+                DrawCityMarkers(fullDisk);
 
-                int cropX = (int)(fullWidth * 0.25);
-                int cropY = (int)(fullHeight * 0.55);
-                int cropW = (int)(fullWidth * 0.45);
-                int cropH = (int)(fullHeight * 0.35);
+                // 3. Prepare Crops
+                // Crop A: Australia (Main)
+                int auX = (int)(fullWidth * 0.25);
+                int auY = (int)(fullHeight * 0.55);
+                int auW = (int)(fullWidth * 0.45);
+                int auH = (int)(fullHeight * 0.35);
+                if (auX + auW > fullWidth) auW = fullWidth - auX;
+                if (auY + auH > fullHeight) auH = fullHeight - auY;
+                Rectangle rectAu = new Rectangle(auX, auY, auW, auH);
 
-                // Safety check to prevent crashing if bounds are wrong
-                if (cropX + cropW > fullWidth) cropW = fullWidth - cropX;
-                if (cropY + cropH > fullHeight) cropH = fullHeight - cropY;
+                // Crop B: Shanghai Area (Inset)
+                int shX = (int)(fullWidth * 0.15); 
+                int shY = (int)(fullHeight * 0.15); 
+                int shW = (int)(fullWidth * 0.30); 
+                int shH = (int)(fullHeight * 0.30); 
+                if (shX + shW > fullWidth) shW = fullWidth - shX;
+                if (shY + shH > fullHeight) shH = fullHeight - shY;
+                Rectangle rectSh = new Rectangle(shX, shY, shW, shH);
 
-                Rectangle cropRect = new Rectangle(cropX, cropY, cropW, cropH);
-
-                // 4. Crop the image and Save as wallpaper.bmp
-                // We use Clone to extract the specific rectangle
-                using (Bitmap croppedBitmap = fullDisk.Clone(cropRect, fullDisk.PixelFormat))
+                // 4. Composition
+                using (Bitmap wallpaper = fullDisk.Clone(rectAu, fullDisk.PixelFormat))
                 {
-                    // Save the Main Wallpaper
-                    string wallpaperPath = string.Format("{0}\\wallpaper.bmp", Cfg.image_folder);
-                    croppedBitmap.Save(wallpaperPath, System.Drawing.Imaging.ImageFormat.Bmp);
+                    using (Bitmap shanghaiImg = fullDisk.Clone(rectSh, fullDisk.PixelFormat))
+                    {
+                        // Resize Shanghai Inset to 35% of wallpaper width
+                        int insetWidth = (int)(wallpaper.Width * 0.35);
+                        int insetHeight = (int)((double)shanghaiImg.Height / shanghaiImg.Width * insetWidth);
+                        
+                        using (Bitmap shanghaiSmall = new Bitmap(insetWidth, insetHeight))
+                        {
+                            using (Graphics gSmall = Graphics.FromImage(shanghaiSmall))
+                            {
+                                gSmall.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                                gSmall.DrawImage(shanghaiImg, 0, 0, insetWidth, insetHeight);
+                            }
 
-                    // 5. Save to Archive Directory (if enabled in settings)
+                            // Draw Inset
+                            using (Graphics gFinal = Graphics.FromImage(wallpaper))
+                            {
+                                int padding = 20;
+                                // White border around inset
+                                gFinal.DrawRectangle(new Pen(Color.White, 3), padding, padding, insetWidth, insetHeight);
+                                gFinal.DrawImage(shanghaiSmall, padding, padding, insetWidth, insetHeight);
+                            }
+                        }
+                    }
+
+                    // Save
+                    string wallpaperPath = string.Format("{0}\\wallpaper.bmp", Cfg.image_folder);
+                    wallpaper.Save(wallpaperPath, System.Drawing.Imaging.ImageFormat.Bmp);
+
                     if (Cfg.saveTexture && Cfg.saveDirectory != "selected Directory")
                     {
                         if (Scrap_wrapper.SequenceCount >= Cfg.saveMaxCount)
@@ -237,54 +371,36 @@ namespace EarthLiveSharp
                         try
                         {
                             string archivePath = Cfg.saveDirectory + "\\" + "wallpaper_" + Scrap_wrapper.SequenceCount + ".bmp";
-                            croppedBitmap.Save(archivePath, System.Drawing.Imaging.ImageFormat.Bmp);
+                            wallpaper.Save(archivePath, System.Drawing.Imaging.ImageFormat.Bmp);
                             Scrap_wrapper.SequenceCount++;
                         }
                         catch (Exception e)
                         {
-                            Trace.WriteLine("[can't save wallpaper to distDirectory]");
+                            Trace.WriteLine("[can't save wallpaper]");
                             Trace.WriteLine(e.Message);
                         }
                     }
                 }
             }
-            // 'using' blocks automatically dispose of fullDisk to free memory
         }
 
         private void InitFolder()
         {
-            if(Directory.Exists(Cfg.image_folder))
+            if(!Directory.Exists(Cfg.image_folder))
             {
-                // delete all images in the image folder.
-                //string[] files = Directory.GetFiles(image_folder);
-                //foreach (string fn in files)
-                //{
-                //    File.Delete(fn);
-                //}
-            }
-            else
-            {
-                Trace.WriteLine("[himawari8 create folder]");
                 Directory.CreateDirectory(Cfg.image_folder);
             }
         }
         public void UpdateImage()
         {
             InitFolder();
-            if (GetImageID() == -1)
-            {
-                return;
-            }
-            if (imageID.Equals(last_imageID))
-            {
-                return;
-            }
+            if (GetImageID() == -1) return;
+            if (imageID.Equals(last_imageID)) return;
             if (SaveImage()==0)
             {
                 JoinImage();
             }
             last_imageID = imageID;
-            return;
         }
         public void CleanCDN()
         {
@@ -301,47 +417,22 @@ namespace EarthLiveSharp
                 HttpWebResponse response = null;
                 StreamReader reader = null;
                 string result = null;
-                for (int i = 0; i < 3;i++ ) // max 3 request each hour.
+                for (int i = 0; i < 3;i++ ) 
                 {
                     response = request.GetResponse() as HttpWebResponse;
-                    if (response.StatusCode != HttpStatusCode.OK)
-                    {
-                        throw new Exception("[himawari8 clean CND cache connection error]");
-                    }
-                    if (!response.ContentType.Contains("application/json"))
-                    {
-                        throw new Exception("[himawari8 clean CND cache no json recieved. your Internet connection is hijacked]");
-                    }
+                    if (response.StatusCode != HttpStatusCode.OK) throw new Exception("Error");
                     reader = new StreamReader(response.GetResponseStream());
                     result = reader.ReadToEnd();
-                    if (result.Contains("\"error\""))
-                    {
-                        throw new Exception("[himawari8 clean CND cache request error]\n" + result);
-                    }
-                    if (result.Contains("\"partial\":false"))
-                    {
-                        Trace.WriteLine("[himawari8 clean CDN cache done]");
-                        break; // end of Clean CDN
-                    }
-                    else
-                    {
-                        Trace.WriteLine("[himawari8 more images to delete]");
-                    }
+                    if (result.Contains("\"partial\":false")) break; 
                 }
             }
-            catch (Exception e)
-            {
-                Trace.WriteLine("[himawari8 error when delete CDN cache]");
-                Trace.WriteLine(e.Message);
-                return;
-            }
+            catch (Exception e) { Trace.WriteLine(e.Message); }
         }
         public void ResetState()
         {
             last_imageID = "0";
         }
     }
-
     public static class Autostart
     {
         static string key = "EarthLiveSharp";
@@ -358,7 +449,7 @@ namespace EarthLiveSharp
                 }
                 else
                 {
-                    runKey.SetValue(key, path); // dirty fix: to avoid exception in next line.
+                    runKey.SetValue(key, path); 
                     runKey.DeleteValue(key);
                 }
                 return true;
